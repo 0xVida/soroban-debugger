@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
+use crate::config::Config;
 
 /// Verbosity level for output control
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +67,9 @@ pub enum Commands {
 
     /// Check compatibility between two contract versions
     UpgradeCheck(UpgradeCheckArgs),
+
+    /// Compare two execution trace JSON files side-by-side
+    Compare(CompareArgs),
 }
 
 #[derive(Parser)]
@@ -93,6 +97,14 @@ pub struct RunArgs {
     /// Network snapshot file to load before execution
     #[arg(long)]
     pub network_snapshot: Option<PathBuf>,
+
+    /// Enable verbose output
+    #[arg(short, long)]
+    pub verbose: bool,
+
+    /// Output format (text, json)
+    #[arg(short, long)]
+    pub format: Option<String>,
 
     /// Show contract events emitted during execution
     #[arg(long)]
@@ -122,6 +134,37 @@ pub struct RunArgs {
     pub storage_filter: Vec<String>,
 }
 
+impl RunArgs {
+    pub fn merge_config(&mut self, config: &Config) {
+        // Breakpoints
+        if self.breakpoint.is_empty() && !config.debug.breakpoints.is_empty() {
+            self.breakpoint = config.debug.breakpoints.clone();
+        }
+        
+        // Show events
+        if !self.show_events {
+            if let Some(show) = config.output.show_events {
+                self.show_events = show;
+            }
+        }
+
+        // Output Format
+        if self.format.is_none() {
+            self.format = config.output.format.clone();
+        }
+
+        // Verbosity: if config has a level > 0 and CLI verbose is false, enable it
+        if !self.verbose {
+            if let Some(level) = config.debug.verbosity {
+                if level > 0 {
+                    self.verbose = true;
+                }
+            }
+        }
+    }
+}
+
+
 #[derive(Parser)]
 pub struct InteractiveArgs {
     /// Path to the contract WASM file
@@ -132,6 +175,13 @@ pub struct InteractiveArgs {
     #[arg(long)]
     pub network_snapshot: Option<PathBuf>,
 }
+
+impl InteractiveArgs {
+    pub fn merge_config(&mut self, _config: &Config) {
+        // Future interactive-specific config could go here
+    }
+}
+
 
 #[derive(Parser)]
 pub struct InspectArgs {
@@ -195,5 +245,20 @@ pub struct UpgradeCheckArgs {
 
     /// Output file for the compatibility report (default: stdout)
     #[arg(long)]
+    pub output: Option<PathBuf>,
+}
+
+#[derive(Parser)]
+pub struct CompareArgs {
+    /// Path to the first execution trace JSON file (trace A)
+    #[arg(value_name = "TRACE_A")]
+    pub trace_a: PathBuf,
+
+    /// Path to the second execution trace JSON file (trace B)
+    #[arg(value_name = "TRACE_B")]
+    pub trace_b: PathBuf,
+
+    /// Output file for the comparison report (default: stdout)
+    #[arg(short, long)]
     pub output: Option<PathBuf>,
 }

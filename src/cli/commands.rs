@@ -1,3 +1,4 @@
+use crate::cli::args::{CompareArgs, InspectArgs, InteractiveArgs, OptimizeArgs, RunArgs, UpgradeCheckArgs};
 use crate::cli::args::{
     InspectArgs, InteractiveArgs, OptimizeArgs, RunArgs, UpgradeCheckArgs, Verbosity,
 };
@@ -131,6 +132,20 @@ pub fn run(args: RunArgs, _verbosity: Verbosity) -> Result<()> {
         inspector.display_filtered(&storage_filter);
     }
 
+    // If output format is JSON, print full result as JSON and exit
+    if let Some(format) = &args.format {
+        if format.eq_ignore_ascii_case("json") {
+            let mut output = serde_json::json!({
+                "result": format!("{:?}", result),
+            });
+
+            if args.show_events {
+                let events = engine.executor().get_events()?;
+                output["events"] = serde_json::to_value(&events).unwrap_or(serde_json::Value::Null);
+            }
+
+            println!("{}", serde_json::to_string_pretty(&output).unwrap());
+            return Ok(());
     if args.show_auth {
         let auth_tree = engine.executor().get_auth_tree()?;
         if args.json {
@@ -469,4 +484,28 @@ pub fn upgrade_check(args: UpgradeCheckArgs, _verbosity: Verbosity) -> Result<()
     }
 
     Ok(())
+}
+
+/// Execute the compare command
+pub fn compare(args: CompareArgs) -> Result<()> {
+    println!("Loading trace A: {:?}", args.trace_a);
+    let trace_a = crate::compare::ExecutionTrace::from_file(&args.trace_a)?;
+
+    println!("Loading trace B: {:?}", args.trace_b);
+    let trace_b = crate::compare::ExecutionTrace::from_file(&args.trace_b)?;
+
+    println!("Comparing traces...\n");
+    let report = crate::compare::CompareEngine::compare(&trace_a, &trace_b);
+    let rendered = crate::compare::CompareEngine::render_report(&report);
+
+    if let Some(output_path) = &args.output {
+        fs::write(output_path, &rendered)
+            .with_context(|| format!("Failed to write report to: {:?}", output_path))?;
+        println!("Comparison report written to: {:?}", output_path);
+    } else {
+        println!("{}", rendered);
+    }
+
+    Ok(())
+}
 }
