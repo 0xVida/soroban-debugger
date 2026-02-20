@@ -84,6 +84,10 @@ pub struct RunArgs {
     ///   exact_key     — match key exactly
     #[arg(long, value_name = "PATTERN")]
     pub storage_filter: Vec<String>,
+
+    /// Additional contracts to load, format: alias=path.wasm (repeatable)
+    #[arg(long, value_name = "ALIAS=PATH")]
+    pub extra_contract: Vec<String>,
 }
 
 #[derive(Parser)]
@@ -99,6 +103,10 @@ pub struct InteractiveArgs {
     /// Enable verbose output
     #[arg(short, long)]
     pub verbose: bool,
+
+    /// Additional contracts to load, format: alias=path.wasm (repeatable)
+    #[arg(long, value_name = "ALIAS=PATH")]
+    pub extra_contract: Vec<String>,
 }
 
 #[derive(Parser)]
@@ -141,6 +149,10 @@ pub struct OptimizeArgs {
     /// Network snapshot file to load before analysis
     #[arg(long)]
     pub network_snapshot: Option<PathBuf>,
+
+    /// Additional contracts to load, format: alias=path.wasm (repeatable)
+    #[arg(long, value_name = "ALIAS=PATH")]
+    pub extra_contract: Vec<String>,
 }
 
 #[derive(Parser)]
