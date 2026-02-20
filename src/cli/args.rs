@@ -2,13 +2,53 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 use crate::config::Config;
 
+/// Verbosity level for output control
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verbosity {
+    Quiet,
+    Normal,
+    Verbose,
+}
+
+impl Verbosity {
+    /// Convert verbosity to log level string for RUST_LOG
+    pub fn to_log_level(self) -> String {
+        match self {
+            Verbosity::Quiet => "error".to_string(),
+            Verbosity::Normal => "info".to_string(),
+            Verbosity::Verbose => "debug".to_string(),
+        }
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "soroban-debug")]
 #[command(about = "A debugger for Soroban smart contracts", long_about = None)]
 #[command(version)]
 pub struct Cli {
+    /// Suppress non-essential output (errors and return value only)
+    #[arg(short, long, global = true)]
+    pub quiet: bool,
+
+    /// Show verbose output including internal details
+    #[arg(short, long, global = true)]
+    pub verbose: bool,
+
     #[command(subcommand)]
     pub command: Commands,
+}
+
+impl Cli {
+    /// Get the effective verbosity level
+    pub fn verbosity(&self) -> Verbosity {
+        if self.quiet {
+            Verbosity::Quiet
+        } else if self.verbose {
+            Verbosity::Verbose
+        } else {
+            Verbosity::Normal
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -70,6 +110,14 @@ pub struct RunArgs {
     #[arg(long)]
     pub show_events: bool,
 
+    /// Show authorization tree during execution
+    #[arg(long)]
+    pub show_auth: bool,
+
+    /// Output format as JSON
+    #[arg(long)]
+    pub json: bool,
+
     /// Filter events by topic
     #[arg(long)]
     pub filter_topic: Option<String>,
@@ -126,10 +174,6 @@ pub struct InteractiveArgs {
     /// Network snapshot file to load before starting interactive session
     #[arg(long)]
     pub network_snapshot: Option<PathBuf>,
-
-    /// Enable verbose output
-    #[arg(short, long)]
-    pub verbose: bool,
 }
 
 impl InteractiveArgs {
