@@ -1,4 +1,3 @@
-use anyhow::Result;
 use clap::{CommandFactory, Parser};
 use clap_complete::generate;
 use soroban_debugger::cli::{Cli, Commands, Verbosity};
@@ -107,8 +106,6 @@ fn handle_deprecations(cli: &mut Cli) {
 
 fn main() -> miette::Result<()> {
     Formatter::configure_colors_from_env();
-fn main() -> Result<()> {
-    Formatter::configure_colors_from_env();
 
     let mut cli = Cli::parse();
     handle_deprecations(&mut cli);
@@ -118,11 +115,8 @@ fn main() -> Result<()> {
 
     let config = soroban_debugger::config::Config::load_or_default();
 
-    match cli.command {
+    let result = match cli.command {
         Some(Commands::Run(mut args)) => {
-    // Execute command
-    match cli.command {
-        Commands::Run(mut args) => {
             args.merge_config(&config);
             soroban_debugger::cli::commands::run(args, verbosity)
         }
@@ -144,12 +138,12 @@ fn main() -> Result<()> {
             generate(args.shell, &mut cmd, "soroban-debug", &mut io::stdout());
             Ok(())
         }
-        Some(Commands::Profile(args)) => {
-            soroban_debugger::cli::commands::profile(args)
-        }
+        Some(Commands::Profile(args)) => soroban_debugger::cli::commands::profile(args),
         Some(Commands::Symbolic(args)) => {
             soroban_debugger::cli::commands::symbolic(args, verbosity)
         }
+        Some(Commands::Server(args)) => soroban_debugger::cli::commands::server(args),
+        Some(Commands::Remote(args)) => soroban_debugger::cli::commands::remote(args, verbosity),
         None => {
             if let Some(path) = cli.list_functions {
                 return soroban_debugger::cli::commands::inspect(
@@ -158,6 +152,7 @@ fn main() -> Result<()> {
                         wasm: None,
                         functions: true,
                         metadata: false,
+                        dependency_graph: false,
                     },
                     verbosity,
                 );
@@ -180,4 +175,6 @@ fn main() -> Result<()> {
         eprintln!("{}", Formatter::error(format!("Error: {err:#}")));
         return Err(err);
     }
+
+    Ok(())
 }

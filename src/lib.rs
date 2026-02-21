@@ -1,6 +1,7 @@
 pub mod analyzer;
 pub mod batch;
 pub mod cli;
+pub mod client;
 pub mod codegen;
 pub mod compare;
 pub mod config;
@@ -12,6 +13,7 @@ pub mod plugin;
 pub mod profiler;
 pub mod repeat;
 pub mod runtime;
+pub mod server;
 pub mod simulator;
 pub mod ui;
 pub mod utils;
