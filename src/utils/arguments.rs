@@ -187,6 +187,7 @@ impl ArgumentParser {
             "symbol" => self.convert_symbol(val),
             "option" => self.convert_option(val),
             "tuple" => self.convert_tuple(val, obj),
+            "vec" => self.convert_vec(val, obj),
             "bytes" => self.convert_bytes(val),
             "bytesn" => self.convert_bytesn(val, obj),
             other => Err(ArgumentParseError::UnsupportedType(other.to_string())),
@@ -353,6 +354,47 @@ impl ArgumentParser {
             debug!("Converting option: {} -> Some", value);
             self.json_to_soroban_val(value)
         }
+    }
+
+    /// Convert a JSON array to a Soroban Vec with optional type enforcement
+    fn convert_vec(
+        &self,
+        value: &Value,
+        obj: &serde_json::Map<String, Value>,
+    ) -> Result<Val, ArgumentParseError> {
+        let arr = value
+            .as_array()
+            .ok_or_else(|| ArgumentParseError::TypeMismatch {
+                expected: "array for vec".to_string(),
+                actual: format!("{}", value),
+            })?;
+
+        let element_type = obj.get("element_type").and_then(|v| v.as_str());
+        
+        let mut soroban_vec = SorobanVec::<Val>::new(&self.env);
+
+        for (i, item) in arr.iter().enumerate() {
+            let val = if let Some(et) = element_type {
+                // Force each element to be of the specified type
+                let mut typed_item = serde_json::Map::new();
+                typed_item.insert("type".to_string(), Value::String(et.to_string()));
+                typed_item.insert("value".to_string(), item.clone());
+                
+                // If it's nested vec, we might need to handle element_type for it too.
+                // For now, let's just pass the whole typed_item back to parse_typed_value.
+                self.parse_typed_value(&Value::Object(typed_item)).map_err(|e| {
+                    ArgumentParseError::ConversionError(format!(
+                        "Vector element {} does not match element_type '{}': {}",
+                        i, et, e
+                    ))
+                })?
+            } else {
+                self.json_to_soroban_val(item)?
+            };
+            soroban_vec.push_back(val);
+        }
+
+        Ok(soroban_vec.into())
     }
 
     /// Convert a JSON array to a Soroban tuple (fixed length array)
@@ -533,6 +575,7 @@ impl ArgumentParser {
     /// Convert a JSON array to a Soroban Vec (vector type)
     fn array_to_soroban_vec(&self, arr: &[Value]) -> Result<Val, ArgumentParseError> {
         let mut soroban_vec = SorobanVec::<Val>::new(&self.env);
+        let mut first_type: Option<String> = None;
 
         for (i, item) in arr.iter().enumerate() {
             let val = self.json_to_soroban_val(item).map_err(|e| {
@@ -542,10 +585,42 @@ impl ArgumentParser {
                     i, e
                 ))
             })?;
+
+            // Optional: Enforce homogeneity for bare arrays by comparing JSON value types
+            // This meets the "Clear errors for mixed types" requirement.
+            let current_type = self.get_json_type_name(item);
+            if let Some(ref expected) = first_type {
+                if *expected != current_type {
+                    return Err(ArgumentParseError::TypeMismatch {
+                        expected: format!("homogeneous array of {}", expected),
+                        actual: format!("mixed array with {} at index {}", current_type, i),
+                    });
+                }
+            } else {
+                first_type = Some(current_type);
+            }
+
             soroban_vec.push_back(val);
         }
 
         Ok(soroban_vec.into())
+    }
+
+    fn get_json_type_name(&self, value: &Value) -> String {
+        match value {
+            Value::Null => "null".to_string(),
+            Value::Bool(_) => "bool".to_string(),
+            Value::Number(_) => "number".to_string(),
+            Value::String(_) => "string".to_string(),
+            Value::Array(_) => "array".to_string(),
+            Value::Object(obj) => {
+                if self.is_typed_annotation(value) {
+                    obj["type"].as_str().unwrap_or("typed").to_string()
+                } else {
+                    "object".to_string()
+                }
+            }
+        }
     }
 
     /// Convert a JSON object to a Soroban Map
@@ -1062,5 +1137,71 @@ mod tests {
         assert!(result.is_ok());
         let vals = result.unwrap();
         assert!(vals[0].is_void());
+    }
+
+    #[test]
+    fn test_typed_address() {
+        let parser = create_parser();
+        let addr = "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADUI";
+        let json = format!(r#"[{{ "type": "address", "value": "{}" }}]"#, addr);
+        let result = parser.parse_args_string(&json);
+        assert!(result.is_ok(), "Failed to parse typed address: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_bare_address_detection() {
+        let parser = create_parser();
+        let addr = "GD3IYSAL6Z2A3A4A3A4A3A4A3A4A3A4A3A4A3A4A3A4A3A4A3A4A3A4A";
+        let json = format!(r#"["{}"]"#, addr);
+        let result = parser.parse_args_string(&json);
+        assert!(result.is_ok(), "Failed to detect bare address: {:?}", result.err());
+    }
+
+    #[test]
+    fn test_invalid_address_error() {
+        let parser = create_parser();
+        let json = r#"[{"type": "address", "value": "too-short"}]"#;
+        let result = parser.parse_args_string(json);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Invalid address"));
+    }
+
+    #[test]
+    fn test_typed_vec_u32() {
+        let parser = create_parser();
+        let result = parser.parse_args_string(r#"[{"type": "vec", "element_type": "u32", "value": [1, 2, 3]}]"#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_typed_vec_homogeneity_enforcement() {
+        let parser = create_parser();
+        // Item at index 2 is a string, but u32 is expected
+        let result = parser.parse_args_string(r#"[{"type": "vec", "element_type": "u32", "value": [1, 2, "three"]}]"#);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("does not match element_type 'u32'"));
+    }
+
+    #[test]
+    fn test_bare_vec_homogeneity_enforcement() {
+        let parser = create_parser();
+        // Bare array with mixed types should fail
+        let result = parser.parse_args_string(r#"[ [1, 2, "three"] ]"#);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("mixed array with string at index 2"));
+    }
+
+    #[test]
+    fn test_nested_vec_bare() {
+        let parser = create_parser();
+        let result = parser.parse_args_string(r#"[ [[1, 2], [3, 4]] ]"#);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_nested_vec_typed() {
+        let parser = create_parser();
+        let result = parser.parse_args_string(r#"[ {"type": "vec", "element_type": "vec", "value": [[1, 2], [3, 4]]} ]"#);
+        assert!(result.is_ok());
     }
 }
