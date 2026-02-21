@@ -186,6 +186,8 @@ impl ArgumentParser {
             "symbol" => self.convert_symbol(val),
             "option" => self.convert_option(val),
             "tuple" => self.convert_tuple(val, obj),
+            "bytes" => self.convert_bytes(val),
+            "bytesn" => self.convert_bytesn(val, obj),
             other => Err(ArgumentParseError::UnsupportedType(other.to_string())),
         }
     }
@@ -380,6 +382,51 @@ impl ArgumentParser {
         }
 
         self.array_to_soroban_vec(arr)
+    }
+
+    fn decode_bytes_string(&self, s: &str) -> Result<Vec<u8>, ArgumentParseError> {
+        if let Some(hex_part) = s.strip_prefix("0x") {
+            hex::decode(hex_part).map_err(|e| ArgumentParseError::InvalidArgument(format!("Invalid hex string: {}", e)))
+        } else if let Some(b64_part) = s.strip_prefix("base64:") {
+            use base64::{Engine, engine::general_purpose};
+            general_purpose::STANDARD.decode(b64_part).map_err(|e| ArgumentParseError::InvalidArgument(format!("Invalid base64 string: {}", e)))
+        } else {
+            Err(ArgumentParseError::InvalidArgument("Bytes must start with '0x' or 'base64:'".to_string()))
+        }
+    }
+
+    fn convert_bytes(&self, value: &Value) -> Result<Val, ArgumentParseError> {
+        let s = value.as_str().ok_or_else(|| ArgumentParseError::TypeMismatch {
+            expected: "string for bytes".to_string(),
+            actual: format!("{}", value),
+        })?;
+        let bytes = self.decode_bytes_string(s)?;
+        let soroban_bytes = soroban_sdk::Bytes::from_slice(&self.env, &bytes);
+        Val::try_from_val(&self.env, &soroban_bytes).map_err(|e| {
+            ArgumentParseError::ConversionError(format!("Failed to convert Bytes: {:?}", e))
+        })
+    }
+
+    fn convert_bytesn(&self, value: &Value, obj: &serde_json::Map<String, Value>) -> Result<Val, ArgumentParseError> {
+        let s = value.as_str().ok_or_else(|| ArgumentParseError::TypeMismatch {
+            expected: "string for bytesn".to_string(),
+            actual: format!("{}", value),
+        })?;
+        let bytes = self.decode_bytes_string(s)?;
+        let expected_length = obj.get("length").and_then(|l| l.as_u64()).ok_or_else(|| {
+            ArgumentParseError::InvalidArgument("BytesN requires a 'length' field".to_string())
+        })? as usize;
+        
+        if bytes.len() != expected_length {
+            return Err(ArgumentParseError::InvalidArgument(format!(
+                "BytesN length mismatch: expected {}, got {}", expected_length, bytes.len()
+            )));
+        }
+        
+        let soroban_bytes = soroban_sdk::Bytes::from_slice(&self.env, &bytes);
+        Val::try_from_val(&self.env, &soroban_bytes).map_err(|e| {
+            ArgumentParseError::ConversionError(format!("Failed to convert BytesN: {:?}", e))
+        })
     }
 
     /// Convert a JSON value to a Soroban Val (bare values without type annotation)
@@ -871,7 +918,7 @@ mod tests {
     #[test]
     fn test_typed_unsupported_type() {
         let parser = create_parser();
-        let result = parser.parse_args_string(r#"[{"type": "bytes", "value": "abc"}]"#);
+        let result = parser.parse_args_string(r#"[{"type": "unknown_type", "value": "abc"}]"#);
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert!(
