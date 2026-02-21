@@ -79,6 +79,9 @@ pub enum Commands {
 
     /// Compare two execution trace JSON files side-by-side
     Compare(CompareArgs),
+
+    /// List exported functions of a contract (shorthand for `inspect --functions`)
+    ListFunctions(ListFunctionsArgs),
 }
 
 #[derive(Parser)]
@@ -111,19 +114,7 @@ pub struct RunArgs {
     #[arg(short, long)]
     pub verbose: bool,
 
-    /// Output format (text, json)
-    #[arg(long)]
-    pub format: Option<String>,
-
-    /// Show contract events emitted during execution
-    #[arg(long)]
-    pub show_events: bool,
-
-    /// Show authorization tree during execution
-    #[arg(long)]
-    pub show_auth: bool,
-
-    /// Output format as JSON
+    /// Output in JSON format
     #[arg(long)]
     pub json: bool,
 
@@ -168,6 +159,13 @@ pub struct RunArgs {
     /// Directory to write generated tests to
     #[arg(long, default_value = "tests/generated")]
     pub test_output_dir: PathBuf,
+    /// Save execution results to file
+    #[arg(long)]
+    pub save_output: Option<PathBuf>,
+
+    /// Append to output file instead of overwriting
+    #[arg(long, requires = "save_output")]
+    pub append: bool,
 }
 
 impl RunArgs {
@@ -230,6 +228,15 @@ pub struct InspectArgs {
     /// Show contract metadata
     #[arg(long)]
     pub metadata: bool,
+}
+
+/// Args for the `list-functions` shorthand command.
+/// Delegates to `inspect --functions` under the hood.
+#[derive(Parser)]
+pub struct ListFunctionsArgs {
+    /// Path to the contract WASM file
+    #[arg(short, long)]
+    pub contract: PathBuf,
 }
 
 #[derive(Parser)]
