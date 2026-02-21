@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use clap_complete::Shell;
 use std::path::PathBuf;
 use crate::config::Config;
 
@@ -43,7 +44,6 @@ pub struct Cli {
 
     #[command(subcommand)]
     pub command: Commands,
-    pub command: Option<Commands>,
 
     /// Show detailed version information
     #[arg(long)]
@@ -132,7 +132,7 @@ pub struct RunArgs {
     pub verbose: bool,
 
     /// Output format (text, json)
-    #[arg(short, long)]
+    #[arg(long)]
     pub format: Option<String>,
 
     /// Show contract events emitted during execution
@@ -256,9 +256,9 @@ impl InteractiveArgs {
 
 #[derive(Parser)]
 pub struct CompletionsArgs {
-    /// Shell to generate completions for (bash, zsh, fish, powershell)
-    #[arg(short, long)]
-    pub shell: String,
+    /// Shell to generate completion script for
+    #[arg(value_enum)]
+    pub shell: Shell,
 }
 
 #[derive(Parser)]
@@ -343,13 +343,6 @@ pub struct CompareArgs {
     /// Output file for the comparison report (default: stdout)
     #[arg(short, long)]
     pub output: Option<PathBuf>,
-}
-
-#[derive(Parser)]
-pub struct CompletionsArgs {
-    /// Shell to generate completion script for
-    #[arg(value_enum)]
-    pub shell: Shell,
 }
 
 /// Arguments for the TUI dashboard subcommand
