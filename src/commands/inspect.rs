@@ -77,10 +77,6 @@ fn print_json_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
 
 // ─── report ───────────────────────────────────────────────────────────────────
 
-/// Render a full inspection report for `wasm_bytes` to stdout.
-///
-/// This function is deliberately kept separate from `run` so that tests can
-/// drive it without touching the filesystem.
 fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
     let info = get_module_info(wasm_bytes)?;
     let signatures = parse_function_signatures(wasm_bytes)?;
@@ -88,6 +84,14 @@ fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
 
     let heavy = "═".repeat(BAR_WIDTH);
 
+    println!("{heavy}");
+    println!("  {}", "Soroban Contract Inspector".bold().cyan());
+    println!("{heavy}\n");
+    println!("  File : {}", path.display().to_string().bright_white());
+    println!("  Size : {} ({:.2} KB)\n", 
+        format!("{} bytes", wasm_bytes.len()).bright_white(),
+        wasm_bytes.len() as f64 / 1024.0
+    );
     // ── header ────────────────────────────────────────────────────────────────
     crate::logging::log_display(&heavy, crate::logging::LogLevel::Info);
     crate::logging::log_display(
@@ -110,8 +114,10 @@ fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
     );
     crate::logging::log_display("", crate::logging::LogLevel::Info);
 
-    // ── module stats ──────────────────────────────────────────────────────────
     section_header("Module Statistics");
+    println!("  Types      : {}", info.type_count.to_string().bright_white());
+    println!("  Functions  : {}", info.function_count.to_string().bright_white());
+    println!("  Exports    : {}\n", info.export_count.to_string().bright_white());
     crate::logging::log_display(
         format!(
             "  Types      : {}",
@@ -135,7 +141,6 @@ fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
     );
     crate::logging::log_display("", crate::logging::LogLevel::Info);
 
-    // ── section breakdown ─────────────────────────────────────────────────────
     section_header("WASM Section Breakdown");
     crate::logging::log_display(
         format!("  {:<20} | {:>10} | {:>6}", "Section", "Size", "Total%"),
@@ -149,6 +154,13 @@ fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
     for section in &info.sections {
         let percentage = (section.size as f64 / info.total_size as f64) * 100.0;
         let size_str = format!("{} B", section.size);
+        
+        let row = format!("  {:<20} | {:>10} | {:>5.1}%", 
+            section.name, size_str, percentage
+        );
+
+        if percentage > 50.0 {
+            println!("{}", row.yellow().bold());
 
         let row = format!(
             "  {:<20} | {:>10} | {:>5.1}%",
@@ -172,7 +184,6 @@ fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
     }
     crate::logging::log_display("", crate::logging::LogLevel::Info);
 
-    // ── function signatures ───────────────────────────────────────────────────
     section_header("Exported Functions");
     if signatures.is_empty() {
         let functions = parse_functions(wasm_bytes).unwrap_or_default();
@@ -205,11 +216,8 @@ fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
         );
 
         for sig in &signatures {
-            let params: Vec<String> = sig
-                .params
-                .iter()
-                .map(|p| format!("{}: {}", p.name, p.type_name))
-                .collect();
+            let params: Vec<String> = sig.params.iter()
+                .map(|p| format!("{}: {}", p.name, p.type_name)).collect();
 
             let ret = match &sig.return_type {
                 Some(t) => format!(" -> {t}"),
@@ -218,6 +226,7 @@ fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
                 _ => String::new(),
             };
 
+            println!("  {:<name_w$}  ({}){ret}", sig.name, params.join(", "), name_w = name_w);
             crate::logging::log_display(
                 format!(
                     "  {:<name_w$}  ({}){ret}",
@@ -231,7 +240,6 @@ fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
     }
     crate::logging::log_display("", crate::logging::LogLevel::Info);
 
-    // ── contract metadata ─────────────────────────────────────────────────────
     section_header("Contract Metadata");
     if metadata.is_empty() {
         crate::logging::log_display(
@@ -251,10 +259,7 @@ fn print_report(path: &Path, wasm_bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
 fn section_header(title: &str) {
-    // "─── Title ──────" where total width equals BAR_WIDTH.
     let fill = BAR_WIDTH.saturating_sub(title.len() + 5);
     crate::logging::log_display(
         format!("─── {title} {}", "─".repeat(fill)),
@@ -262,9 +267,9 @@ fn section_header(title: &str) {
     );
 }
 
-/// Print a labelled row only when the value is `Some`.
 fn print_field(label: &str, value: &Option<String>) {
     if let Some(v) = value {
+        println!("  {label:<20} : {v}");
         // Left-align the label in a 20-char column for consistent spacing.
         crate::logging::log_display(
             format!("  {label:<20} : {v}"),
