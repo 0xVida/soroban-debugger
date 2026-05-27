@@ -112,15 +112,16 @@ pub fn load_scenario(path: &Path, visiting: &mut HashSet<PathBuf>) -> Result<Vec
     Ok(all_steps)
 }
 
+/// Parsed `--tags` / `--exclude-tags` filters as `(include, exclude)`. `None`
+/// on either axis means "no filter requested for that axis".
+type TagSelection = (Option<BTreeSet<String>>, Option<BTreeSet<String>>);
+
 /// Parse the comma-separated `--tags` / `--exclude-tags` values into normalized,
 /// de-duplicated sets and reject any tag present in both (#1282).
 ///
 /// Normalization trims surrounding whitespace and drops empty entries; the
 /// returned `BTreeSet`s deduplicate automatically.
-pub fn parse_tag_selection(
-    tags: Option<&str>,
-    exclude_tags: Option<&str>,
-) -> Result<(Option<BTreeSet<String>>, Option<BTreeSet<String>>)> {
+pub fn parse_tag_selection(tags: Option<&str>, exclude_tags: Option<&str>) -> Result<TagSelection> {
     fn parse(raw: Option<&str>) -> Option<BTreeSet<String>> {
         raw.map(|s| {
             s.split(',')

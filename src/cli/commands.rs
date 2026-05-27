@@ -1928,20 +1928,19 @@ pub fn compare(args: CompareArgs) -> Result<()> {
 pub fn replay(args: ReplayArgs, verbosity: Verbosity) -> Result<()> {
     print_info(format!("Loading trace file: {:?}", args.trace_file));
     // Fail fast on malformed or unsupported-schema-version traces (#1288).
-    let raw_trace: serde_json::Value = serde_json::from_str(
-        &std::fs::read_to_string(&args.trace_file).map_err(|e| {
+    let raw_trace: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&args.trace_file).map_err(|e| {
             DebuggerError::FileError(format!(
                 "Failed to read trace file {:?}: {}",
                 args.trace_file, e
             ))
-        })?,
-    )
-    .map_err(|e| {
-        DebuggerError::FileError(format!(
-            "Failed to parse trace file {:?} as JSON: {}",
-            args.trace_file, e
-        ))
-    })?;
+        })?)
+        .map_err(|e| {
+            DebuggerError::FileError(format!(
+                "Failed to parse trace file {:?} as JSON: {}",
+                args.trace_file, e
+            ))
+        })?;
     crate::compare::trace::validate_trace_schema(&raw_trace)?;
     let original_trace = crate::compare::ExecutionTrace::from_file(&args.trace_file)?;
 
